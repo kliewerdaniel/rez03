@@ -22,6 +22,7 @@ if current_dir not in sys.path:
 from config import config
 from ingest import ingest_knowledge_base, get_knowledge_base_stats, search_knowledge_base
 from agents.researcher import ResearcherAgent
+from orchestrator import BlogGenerationOrchestrator
 from models import GenerationSpec
 from utils.validator import validate_generation_spec
 
@@ -139,54 +140,51 @@ def generate(topic, style, length, categories, tags, keywords, tone, interactive
         console.print(f"Word range: {spec_data['min_words']}-{spec_data['max_words']}")
         return
 
-    # Generate content
+    # Generate content using agentic workflow
     with console.status("[bold green]Generating content...", spinner="dots"):
         try:
-            result = asyncio.run(generate_blog_post(spec_data))
+            # Run the agentic workflow
+            orchestrator = BlogGenerationOrchestrator()
+            workflow_result = asyncio.run(orchestrator.generate_blog_post(spec_data['topic'], spec_data))
+
+            if not workflow_result.success:
+                console.print(f"[red]Generation failed:[/red] {workflow_result.error}")
+                return
 
             # Display results
             console.print("[green]✓ Blog post generated successfully![/green]")
+            console.print(f"[green]✓ Completed in {workflow_result.iterations} iterations[/green]")
 
-            # Save to blog directory automatically
-            if not output:
-                # Generate automatic filename like Next.js convention: YYYY-MM-DD-slug.md
-                from utils.file_utils import generate_filename
-                from models import GeneratedContent
+            if output:
+                # User specified output path - still save there for compatibility
+                from utils.file_utils import write_blog_post
+                from utils.file_utils import generate_frontmatter
+                from models import GeneratedContent, GenerationSpec
 
-                # Create a GeneratedContent object for filename generation
+                # Create content objects
+                spec_obj = GenerationSpec(**spec_data)
                 gen_content = GeneratedContent(
                     title=spec_data['topic'],
-                    content=result,
+                    content=workflow_result.final_content['content'],
                     frontmatter={
                         'title': spec_data['topic'],
-                        'date': None,  # Will be set automatically
+                        'date': None,
                         'categories': spec_data.get('categories', []),
                         'tags': spec_data.get('tags', [])
                     }
                 )
 
-                filename = generate_filename(gen_content)
+                frontmatter = generate_frontmatter(spec_obj, gen_content)
+                saved_path = write_blog_post(Path(output).name, frontmatter, workflow_result.final_content['content'])
+                console.print(f"[green]✓ Saved blog post to: {saved_path}[/green]")
             else:
-                filename = Path(output).name
-
-            # Create the complete post with frontmatter
-            from utils.file_utils import generate_frontmatter
-            from models import GenerationSpec
-
-            # Convert spec_data to GenerationSpec object
-            spec_obj = GenerationSpec(**spec_data)
-            frontmatter = generate_frontmatter(
-                spec_obj,
-                gen_content
-            )
-
-            from utils.file_utils import write_blog_post
-            saved_path = write_blog_post(filename, frontmatter, result)
-
-            console.print(f"[green]✓ Saved blog post to: {saved_path}[/green]")
+                # Orchestrator already saved to ./content/posts/
+                console.print(f"[green]✓ Auto-saved blog post to: {workflow_result.file_path}[/green]")
+                console.print(f"[green]✓ Ingested into knowledge base for future retrieval[/green]")
 
             # Preview (first 500 chars)
-            preview = result[:500] + "..." if len(result) > 500 else result
+            content = workflow_result.final_content['content']
+            preview = content[:500] + "..." if len(content) > 500 else content
             console.print("\n[bold]Preview:[/bold]")
             console.print(Panel(preview))
 
@@ -254,59 +252,21 @@ def stats():
 
 
 async def generate_blog_post(spec_data: Dict[str, Any]) -> str:
-    """Main blog post generation workflow."""
-    # For now, implement a simplified workflow with just research
-    researcher = ResearcherAgent()
+    """Main agentic blog post generation workflow."""
+    # Initialize the orchestrator
+    orchestrator = BlogGenerationOrchestrator()
 
-    # Perform research
-    research_brief = await researcher.research_topic(
+    # Execute the agentic workflow
+    result = await orchestrator.generate_blog_post(
         spec_data['topic'],
         spec_data
     )
 
-    # Generate simple blog post structure using the research
-    intro_content = research_brief.recommended_focus[0] if research_brief.recommended_focus else 'Introduction content here'
-    key_insights = facts_to_markdown(research_brief.relevant_facts)
-    related_content = topics_to_markdown(research_brief.related_topics)
-    categories = ', '.join(spec_data.get('categories', []))
-    tags = ', '.join(spec_data.get('tags', []))
+    if not result.success:
+        raise Exception(f"Generation failed: {result.error}")
 
-    content_template = """# {topic}
-
-## Introduction
-
-{intro}
-
-## Key Insights
-
-{insights}
-
-## Related Content
-
-{related}
-
-## Conclusion
-
-Summary and next steps here.
-
----
-
-*Word count: {word_count}
-*Categories: {categories}
-*Tags: {tags}
-"""
-
-    content = content_template.format(
-        topic=spec_data['topic'],
-        intro=intro_content,
-        insights=key_insights,
-        related=related_content,
-        word_count=len(intro_content.split()) + len(key_insights.split()) + len(related_content.split()),
-        categories=categories,
-        tags=tags
-    )
-
-    return content
+    # Return the final content
+    return result.final_content['content'] if result.final_content else ""
 
 
 def facts_to_markdown(facts: list) -> str:

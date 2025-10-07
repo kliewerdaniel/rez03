@@ -4,6 +4,7 @@ File I/O utilities for reading, writing, and managing blog posts.
 
 import json
 import os
+import re
 import shutil
 import sys
 from datetime import datetime, timezone, timedelta
@@ -92,28 +93,27 @@ def generate_frontmatter(spec: GenerationSpec, content: GeneratedContent, seo_me
     Returns:
         Frontmatter dictionary
     """
-    # Generate timestamp
-    now = datetime.now(timezone(timedelta(hours=-5)))  # CDT timezone
-    date_str = now.strftime("%Y-%m-%d %H:%M:%S %z")
+    # Generate timestamp with microseconds, no timezone since example doesn't show it
+    now = datetime.now()
+    date_str = now.strftime("%Y-%m-%d %H:%M:%S.%f")
 
     # Generate slug
     slug = slugify(content.title)
 
     # Build frontmatter
     frontmatter = {
-        "layout": "post",
         "title": content.title,
         "date": date_str,
         "categories": spec.categories or ["Uncategorized"],
         "tags": spec.tags or [],
-        "excerpt": generate_excerpt(content.content, spec.topic),
+        "description": generate_excerpt(content.content, spec.topic),
         "slug": slug
     }
 
     # Add SEO metadata if available
     if seo_metadata:
         if 'meta_description' in seo_metadata:
-            frontmatter['excerpt'] = seo_metadata['meta_description']
+            frontmatter['description'] = seo_metadata['meta_description']
         if 'optimized_title' in seo_metadata:
             frontmatter['title'] = seo_metadata['optimized_title']
 
@@ -188,20 +188,21 @@ def write_blog_post(filename: str, frontmatter: Dict[str, Any], content: str) ->
         backup_path = file_path.with_suffix('.backup.md')
         shutil.copy2(file_path, backup_path)
 
-    # Write YAML frontmatter
-    import yaml
-
     try:
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write("---\n")
 
-            # Custom YAML dumper to ensure proper formatting
-            yaml_str = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False, allow_unicode=True)
+            # Write frontmatter in exact format matching the desired output
+            f.write(f"title: \"{frontmatter['title']}\"\n")
+            f.write(f"date: {frontmatter['date']}\n")
 
-            # Clean up YAML formatting
-            yaml_str = yaml_str.replace("'", '"')  # Use double quotes
+            # Format categories and tags as quoted items in list format
+            categories_formatted = ', '.join(f'"{c}"' for c in frontmatter['categories'])
+            tags_formatted = ', '.join(f'"{t}"' for t in frontmatter['tags'])
+            f.write(f"categories: [{categories_formatted}]\n")
+            f.write(f"tags: [{tags_formatted}]\n")
+            f.write(f"description: \"{frontmatter['description']}\"\n")
 
-            f.write(yaml_str)
             f.write("---\n\n")
             f.write(content)
 

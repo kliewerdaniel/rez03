@@ -60,6 +60,8 @@ class GenerationSpec(BaseModel):
     tone: str = "informative"  # informative, persuasive, educational
     target_audience: Optional[str] = None
     special_requirements: Optional[str] = None
+    min_words: int = Field(default=1000)
+    max_words: int = Field(default=1500)
 
 
 class ResearchBrief(BaseModel):

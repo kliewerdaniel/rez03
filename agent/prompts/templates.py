@@ -164,6 +164,150 @@ $quality_gate
 """)
 
 # Validation Templates
+RETRIEVER_PROMPT_TEMPLATE = Template("""
+Based on the provided context from the knowledge base, create a concise summary and extract relevant excerpts for the new blog post topic.
+
+TOPIC: $topic
+
+RETRIEVED CONTEXT:
+$context
+
+INSTRUCTIONS:
+1. Create a concise summary (100-200 words) that captures the essence of relevant existing content and its relationship to the topic
+2. Extract $excerpt_limit of the most relevant excerpts that would inform the new post
+3. Highlight key themes, insights, and connections from existing posts
+4. Focus on substantive, actionable content that adds value to the new post
+
+Format your response as:
+SUMMARY: [Your concise synthesis here]
+
+RELEVANT EXCERPTS:
+- [Quote or paraphrase from most relevant section]
+- [Next most relevant excerpt]
+- [Continue as needed]
+
+Ensure excerpts are directly useful for creating original, valuable new content.
+""")
+
+COMPOSER_PROMPT_TEMPLATE = Template("""
+Create an initial blog post draft based on the retriever's context synthesis and the generation specifications.
+
+TOPIC: $topic
+
+RETRIEVER CONTEXT:
+Summary: $summary
+
+Relevant Excerpts:
+$excerpts
+
+GENERATION SPECIFICATIONS:
+- Style: $style
+- Target Length: $length words ($min_words - $max_words range)
+- Tone: $tone
+- Categories: $categories
+- Tags: $tags
+
+STRUCTURE REQUIREMENTS:
+1. H1 title with primary keywords (use # )
+2. Engaging introduction that hooks the reader
+3. 3-5 main content sections with H2 headings (use ## )
+4. Conclusion with key takeaways and next steps
+5. Proper markdown formatting throughout
+
+CONTENT GUIDELINES:
+- Incorporate insights from the retriever context naturally
+- Write in authoritative, engaging voice
+- Balance technical depth with accessibility
+- Include practical examples and actionable advice
+- Ensure logical flow and smooth transitions
+- Target the specified word count range
+
+IMPORTANT: DO NOT include any YAML frontmatter, metadata headers, or --- delimiters. Start directly with the H1 title and output only the markdown body content.
+""")
+
+REFINER_PROMPT_TEMPLATE = Template("""
+Review and refine the blog post draft to improve structure, clarity, and engagement.
+
+ORIGINAL DRAFT:
+$draft_content
+
+REFINEMENT TASKS:
+1. Enhance structure and logical flow
+2. Improve readability and engagement
+3. Expand sections that lack sufficient detail
+4. Strengthen weak arguments with better explanations
+5. Eliminate redundancy and improve coherence
+6. Polish language for professional quality
+7. Verify technical accuracy and terminology
+8. Optimize for the target audience understanding
+
+TARGET LENGTH: $length words (maintain $min_words - $max_words range)
+
+SPECIFICATIONS TO MAINTAIN:
+- Style: $style
+- Tone: $tone
+- Categories: $categories
+- Tags: $tags
+
+IMPORTANT: DO NOT include any YAML frontmatter or metadata headers. Output only the refined markdown body content starting with the H1 title.
+
+Output the refined version with clear improvements while preserving the core content and structure.
+""")
+
+EVALUATOR_PROMPT_TEMPLATE = Template("""
+Evaluate the blog post draft against quality standards and determine if it meets publication criteria.
+
+CONTENT TO EVALUATE:
+$draft_content
+
+EVALUATION CRITERIA:
+- ✅ Structure: Clear introduction, body sections, and conclusion
+- ✅ Word count: Within $min_words - $max_words range (current: $current_words)
+- ✅ Markdown formatting: Proper headings, lists, links, code blocks
+- ✅ Coherence: Logical flow, smooth transitions, consistent tone
+- ✅ Factual accuracy: Technically correct claims and explanations
+- ✅ Originality: Adds clear value beyond existing content
+- ✅ Engagement: Compelling, readable, actionable content
+
+REQUIRED FOR APPROVAL:
+- Must pass ALL structural checks
+- Must meet word count requirements
+- Must use correct markdown throughout
+- Must demonstrate sufficient quality in coherence, accuracy, and originality
+
+If APPROVED: Output only "APPROVED" followed by a brief justification.
+
+If REJECTED: Output "REJECTED" followed by specific, actionable feedback:
+- List each failing criterion
+- Provide exact locations of problems
+- Suggest specific improvements
+- Prioritize fixes by impact and effort
+""")
+
+INGESTOR_PROMPT_TEMPLATE = Template("""
+The blog post has been approved for publication. Prepare the final output files and ingestion metadata.
+
+APPROVED CONTENT:
+$final_content
+
+INGESTION REQUIREMENTS:
+1. Generate slug from title for URL-safe filename
+2. Create ./content/posts/{slug}.md file
+3. Ensure proper frontmatter is included
+4. Prepare content chunks for vector storage
+5. Generate embeddings for searchability
+6. Update knowledge base with new content
+
+VALIDATION CHECKS:
+- Confirm file was saved successfully
+- Verify frontmatter completeness
+- Ensure content is chunked appropriately
+- Confirm embeddings were generated
+- Validate retrievability of new content
+
+Output confirmation when ingestion is complete and provide the final file path.
+""")
+
 VALIDATION_FEEDBACK_TEMPLATE = Template("""
 Provide specific feedback on the following content validation issues:
 
